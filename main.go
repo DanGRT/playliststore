@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"time"
@@ -19,47 +18,45 @@ func main() {
 		log.Fatalf("Error loading .env file")
 	}
 
-	clientID := os.Getenv("clientID")
-	clientSecret := os.Getenv("clientSecret")
-	db := helpers.InitDB("./spotify.db")
+	clientID := os.Getenv("CLIENT_ID")
+	clientSecret := os.Getenv("CLIENT_SECRET")
+	dbPath := os.Getenv("DB_PATH")
+
+	db := helpers.InitDB(dbPath)
 	client, err := helpers.InitialiseAuth(clientID, clientSecret)
 	if err != nil {
-		fmt.Printf("Error initializing authentication: %v\n", err)
+		log.Printf("Error initializing authentication: %v\n", err)
 		return
 	}
 
-	// Get the current user
 	user, err := (*client).CurrentUser()
 	if err != nil {
-		fmt.Printf("Error getting current user: %v\n", err)
+		log.Printf("Error getting current user: %v\n", err)
 		return
 	}
 
-	fmt.Printf("Welcome, %s!\n", user.DisplayName)
+	log.Printf("Connected to spotify as, %s!\n", user.DisplayName)
 
 	playlists, err := (*client).GetPlaylistsForUser(user.ID)
 	if err != nil {
-		fmt.Printf("Error getting playlists: %v\n", err)
+		log.Printf("Error getting playlists: %v\n", err)
 		return
 	}
 
 	for _, playlist := range playlists.Playlists {
 		pl := helpers.UserPlaylist{
-			ID:        string(playlist.ID) + date,
-			SpotifyID: string(playlist.ID),
-			Name:      playlist.Name,
-			Date:      date,
+			ID:   string(playlist.ID),
+			Name: playlist.Name,
 		}
 
 		helpers.InsertPlaylist(db, pl)
 
-		// Get tracks for playlist
 		tracks, err := (*client).GetPlaylistTracks(playlist.ID)
 		if err != nil {
-			fmt.Printf("Error getting tracks for playlist: %v\n", err)
+			log.Printf("Error getting tracks for playlist: %v\n", err)
 			return
 		}
 
-		helpers.InsertTracks(db, tracks.Tracks, pl)
+		helpers.InsertTracks(db, tracks.Tracks, pl, date)
 	}
 }

@@ -25,7 +25,7 @@ type Song struct {
 func InitDB(filepath string) *sql.DB {
 	db, err := sql.Open("sqlite3", filepath)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 	err = createTable(db)
 	if err != nil {
@@ -36,13 +36,11 @@ func InitDB(filepath string) *sql.DB {
 }
 
 func createTable(db *sql.DB) error {
-	sqlTable := `
-	CREATE TABLE IF NOT EXISTS Playlists(
+	sqlTable := `CREATE TABLE IF NOT EXISTS Playlists(
 		ID TEXT NOT NULL PRIMARY KEY,
-		SpotifyID TEXT NOT NULL,
-		Name TEXT NOT NULL,
-		Date TEXT
+		Name TEXT NOT NULL
 	);
+	
 	CREATE TABLE IF NOT EXISTS Songs(
 		SongID TEXT NOT NULL,
 		Name TEXT,
@@ -50,13 +48,16 @@ func createTable(db *sql.DB) error {
 		DurationMS INTEGER,
 		PRIMARY KEY(SongID)
 	);
+	
 	CREATE TABLE IF NOT EXISTS PlaylistSongMapping(
 		PlaylistID TEXT NOT NULL,
 		SongID TEXT NOT NULL,
+		Date TEXT NOT NULL,
 		FOREIGN KEY (PlaylistID) REFERENCES Playlists(ID),
-		FOREIGN KEY (SongID) REFERENCES PlaylistSongs(SongID),
-		PRIMARY KEY(PlaylistID, SongID)
-		);`
+		FOREIGN KEY (SongID) REFERENCES Songs(SongID),
+		PRIMARY KEY(PlaylistID, SongID, Date)
+	);
+	`
 
 	_, err := db.Exec(sqlTable)
 	if err != nil {
@@ -68,12 +69,10 @@ func createTable(db *sql.DB) error {
 
 func InsertPlaylist(db *sql.DB, pl UserPlaylist) error {
 	sqlAddItem := `
-	INSERT INTO Playlists(
+	INSERT OR IGNORE INTO Playlists(
 		ID,
-		SpotifyID,
-		Name,
-		Date
-	) values(?, ?, ?, ?)
+		Name
+	) values(?, ?)
 	`
 
 	stmt, err := db.Prepare(sqlAddItem)
@@ -82,7 +81,7 @@ func InsertPlaylist(db *sql.DB, pl UserPlaylist) error {
 	}
 	defer stmt.Close()
 
-	_, err2 := stmt.Exec(pl.SpotifyID+pl.Date, pl.SpotifyID, pl.Name, pl.Date)
+	_, err2 := stmt.Exec(pl.ID, pl.Name)
 	if err2 != nil {
 		return err2
 	}
@@ -90,7 +89,7 @@ func InsertPlaylist(db *sql.DB, pl UserPlaylist) error {
 	return nil
 }
 
-func InsertTracks(db *sql.DB, tracks []spotify.PlaylistTrack, pl UserPlaylist) error {
+func InsertTracks(db *sql.DB, tracks []spotify.PlaylistTrack, pl UserPlaylist, date string) error {
 	sqlAddItem := `
 	INSERT OR IGNORE INTO Songs(
 		SongID,
@@ -118,18 +117,19 @@ func InsertTracks(db *sql.DB, tracks []spotify.PlaylistTrack, pl UserPlaylist) e
 		if err2 != nil {
 			return err2
 		}
-		InsertPlaylistSongMapping(db, tracks, pl.ID)
+		InsertPlaylistSongMapping(db, tracks, pl.ID, date)
 	}
 
 	return nil
 }
 
-func InsertPlaylistSongMapping(db *sql.DB, tracks []spotify.PlaylistTrack, playlistID string) error {
+func InsertPlaylistSongMapping(db *sql.DB, tracks []spotify.PlaylistTrack, playlistID string, date string) error {
 	sqlAddMapping := `
 	INSERT INTO PlaylistSongMapping(
 		PlaylistID,
-		SongID
-	) values(?, ?)
+		SongID,
+		Date
+	) values(?, ?, ?)
 	`
 
 	stmt, err := db.Prepare(sqlAddMapping)
@@ -139,7 +139,7 @@ func InsertPlaylistSongMapping(db *sql.DB, tracks []spotify.PlaylistTrack, playl
 	defer stmt.Close()
 
 	for _, track := range tracks {
-		_, err2 := stmt.Exec(playlistID, string(track.Track.ID))
+		_, err2 := stmt.Exec(playlistID, string(track.Track.ID), date)
 		if err2 != nil {
 			return err2
 		}
